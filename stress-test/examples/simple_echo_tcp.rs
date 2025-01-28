@@ -21,7 +21,7 @@ fn main() {
         let (mut socket, _) = listener.accept().await.unwrap();
         let (mut rd, mut wr) = socket.split();
         while tokio::io::copy(&mut rd, &mut wr).await.is_ok() {}
-    });
+    }, tokio::TaskPriority::Normal);
 
     // wait a bit so that the listener binds.
     sleep(Duration::from_millis(100));
@@ -45,7 +45,7 @@ fn main() {
             let _ = stream.read(&mut buff).await.unwrap();
         }
         tx.send(()).unwrap();
-    });
+    }, tokio::TaskPriority::Normal);
 
     loop {
         // check that we're done.

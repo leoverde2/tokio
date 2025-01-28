@@ -4,6 +4,7 @@ use crate::runtime::scheduler::CurrentThread;
 use crate::runtime::{context, EnterGuard, Handle};
 use crate::task::JoinHandle;
 use crate::util::trace::SpawnMeta;
+use super::TaskPriority;
 
 use std::future::Future;
 use std::mem;
@@ -239,7 +240,7 @@ impl Runtime {
     /// # }
     /// ```
     #[track_caller]
-    pub fn spawn<F>(&self, future: F) -> JoinHandle<F::Output>
+    pub fn spawn<F>(&self, future: F, priority: TaskPriority) -> JoinHandle<F::Output>
     where
         F: Future + Send + 'static,
         F::Output: Send + 'static,
@@ -247,10 +248,10 @@ impl Runtime {
         let fut_size = mem::size_of::<F>();
         if fut_size > BOX_FUTURE_THRESHOLD {
             self.handle
-                .spawn_named(Box::pin(future), SpawnMeta::new_unnamed(fut_size))
+                .spawn_named(Box::pin(future), SpawnMeta::new_unnamed(fut_size), priority)
         } else {
             self.handle
-                .spawn_named(future, SpawnMeta::new_unnamed(fut_size))
+                .spawn_named(future, SpawnMeta::new_unnamed(fut_size), priority)
         }
     }
 
@@ -272,12 +273,12 @@ impl Runtime {
     /// # }
     /// ```
     #[track_caller]
-    pub fn spawn_blocking<F, R>(&self, func: F) -> JoinHandle<R>
+    pub fn spawn_blocking<F, R>(&self, func: F, priority: TaskPriority) -> JoinHandle<R>
     where
         F: FnOnce() -> R + Send + 'static,
         R: Send + 'static,
     {
-        self.handle.spawn_blocking(func)
+        self.handle.spawn_blocking(func, priority)
     }
 
     /// Runs a future to completion on the Tokio runtime. This is the

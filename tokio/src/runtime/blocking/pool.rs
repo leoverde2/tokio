@@ -9,6 +9,7 @@ use crate::runtime::task::{self, JoinHandle};
 use crate::runtime::{Builder, Callback, Handle, BOX_FUTURE_THRESHOLD};
 use crate::util::metric_atomics::MetricAtomicUsize;
 use crate::util::trace::{blocking_task, SpawnMeta};
+use crate::TaskPriority;
 
 use std::collections::{HashMap, VecDeque};
 use std::fmt;
@@ -176,13 +177,13 @@ const KEEP_ALIVE: Duration = Duration::from_secs(10);
 /// in case of runtime shutdown.
 #[track_caller]
 #[cfg_attr(target_os = "wasi", allow(dead_code))]
-pub(crate) fn spawn_blocking<F, R>(func: F) -> JoinHandle<R>
+pub(crate) fn spawn_blocking<F, R>(func: F, priority: TaskPriority) -> JoinHandle<R>
 where
     F: FnOnce() -> R + Send + 'static,
     R: Send + 'static,
 {
     let rt = Handle::current();
-    rt.spawn_blocking(func)
+    rt.spawn_blocking(func, priority)
 }
 
 cfg_fs! {
@@ -194,13 +195,13 @@ cfg_fs! {
     /// operations. Tasks will be scheduled as mandatory, meaning they are
     /// guaranteed to run unless a shutdown is already taking place. In case a
     /// shutdown is already taking place, `None` will be returned.
-    pub(crate) fn spawn_mandatory_blocking<F, R>(func: F) -> Option<JoinHandle<R>>
+    pub(crate) fn spawn_mandatory_blocking<F, R>(func: F, priority: TaskPriority) -> Option<JoinHandle<R>>
     where
         F: FnOnce() -> R + Send + 'static,
         R: Send + 'static,
     {
         let rt = Handle::current();
-        rt.inner.blocking_spawner().spawn_mandatory_blocking(&rt, func)
+        rt.inner.blocking_spawner().spawn_mandatory_blocking(&rt, func, priority)
     }
 }
 
@@ -295,7 +296,7 @@ impl fmt::Debug for BlockingPool {
 
 impl Spawner {
     #[track_caller]
-    pub(crate) fn spawn_blocking<F, R>(&self, rt: &Handle, func: F) -> JoinHandle<R>
+    pub(crate) fn spawn_blocking<F, R>(&self, rt: &Handle, func: F, priority: TaskPriority) -> JoinHandle<R>
     where
         F: FnOnce() -> R + Send + 'static,
         R: Send + 'static,
@@ -307,6 +308,7 @@ impl Spawner {
                 Mandatory::NonMandatory,
                 SpawnMeta::new_unnamed(fn_size),
                 rt,
+                priority,
             )
         } else {
             self.spawn_blocking_inner(
@@ -314,6 +316,7 @@ impl Spawner {
                 Mandatory::NonMandatory,
                 SpawnMeta::new_unnamed(fn_size),
                 rt,
+                priority,
             )
         };
 
@@ -333,7 +336,7 @@ impl Spawner {
             all(loom, not(test)), // the function is covered by loom tests
             test
         ), allow(dead_code))]
-        pub(crate) fn spawn_mandatory_blocking<F, R>(&self, rt: &Handle, func: F) -> Option<JoinHandle<R>>
+        pub(crate) fn spawn_mandatory_blocking<F, R>(&self, rt: &Handle, func: F, priority: TaskPriority) -> Option<JoinHandle<R>>
         where
             F: FnOnce() -> R + Send + 'static,
             R: Send + 'static,
@@ -345,6 +348,7 @@ impl Spawner {
                     Mandatory::Mandatory,
                     SpawnMeta::new_unnamed(fn_size),
                     rt,
+                    priority,
                 )
             } else {
                 self.spawn_blocking_inner(
@@ -352,6 +356,7 @@ impl Spawner {
                     Mandatory::Mandatory,
                     SpawnMeta::new_unnamed(fn_size),
                     rt,
+                    priority,
                 )
             };
 
@@ -370,6 +375,7 @@ impl Spawner {
         is_mandatory: Mandatory,
         spawn_meta: SpawnMeta<'_>,
         rt: &Handle,
+        priority: TaskPriority,
     ) -> (JoinHandle<R>, Result<(), SpawnError>)
     where
         F: FnOnce() -> R + Send + 'static,
@@ -379,7 +385,7 @@ impl Spawner {
         let fut =
             blocking_task::<F, BlockingTask<F>>(BlockingTask::new(func), spawn_meta, id.as_u64());
 
-        let (task, handle) = task::unowned(fut, BlockingSchedule::new(rt), id);
+        let (task, handle) = task::unowned(fut, BlockingSchedule::new(rt), id, priority);
 
         let spawned = self.spawn_task(Task::new(task, is_mandatory), rt);
         (handle, spawned)

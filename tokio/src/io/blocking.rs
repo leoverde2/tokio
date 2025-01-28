@@ -1,5 +1,6 @@
 use crate::io::sys;
 use crate::io::{AsyncRead, AsyncWrite, ReadBuf};
+use crate::TaskPriority;
 
 use std::cmp;
 use std::future::Future;
@@ -77,7 +78,7 @@ where
                         // SAFETY: the requirements are satisfied by `Blocking::new`.
                         let res = unsafe { buf.read_from(&mut inner, max_buf_size) };
                         (res, buf, inner)
-                    }));
+                    }, TaskPriority::Low));
                 }
                 State::Busy(ref mut rx) => {
                     let (res, mut buf, inner) = ready!(Pin::new(rx).poll(cx))?;
@@ -126,7 +127,7 @@ where
                         let res = buf.write_to(&mut inner).map(|()| n);
 
                         (res, buf, inner)
-                    }));
+                    }, TaskPriority::Low));
                     self.need_flush = true;
 
                     return Poll::Ready(Ok(n));
@@ -156,7 +157,7 @@ where
                         self.state = State::Busy(sys::run(move || {
                             let res = inner.flush().map(|()| 0);
                             (res, buf, inner)
-                        }));
+                        }, TaskPriority::Low));
 
                         self.need_flush = false;
                     } else {

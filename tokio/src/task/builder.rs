@@ -2,7 +2,7 @@
 use crate::{
     runtime::{Handle, BOX_FUTURE_THRESHOLD},
     task::{JoinHandle, LocalSet},
-    util::trace::SpawnMeta,
+    util::trace::SpawnMeta, TaskPriority,
 };
 use std::{future::Future, io, mem};
 
@@ -84,16 +84,16 @@ impl<'a> Builder<'a> {
     /// See [`task::spawn`](crate::task::spawn()) for
     /// more details.
     #[track_caller]
-    pub fn spawn<Fut>(self, future: Fut) -> io::Result<JoinHandle<Fut::Output>>
+    pub fn spawn<Fut>(self, future: Fut, priority: TaskPriority) -> io::Result<JoinHandle<Fut::Output>>
     where
         Fut: Future + Send + 'static,
         Fut::Output: Send + 'static,
     {
         let fut_size = mem::size_of::<Fut>();
         Ok(if fut_size > BOX_FUTURE_THRESHOLD {
-            super::spawn::spawn_inner(Box::pin(future), SpawnMeta::new(self.name, fut_size))
+            super::spawn::spawn_inner(Box::pin(future), SpawnMeta::new(self.name, fut_size), priority)
         } else {
-            super::spawn::spawn_inner(future, SpawnMeta::new(self.name, fut_size))
+            super::spawn::spawn_inner(future, SpawnMeta::new(self.name, fut_size), priority)
         })
     }
 
@@ -105,16 +105,16 @@ impl<'a> Builder<'a> {
     /// [runtime handle]: crate::runtime::Handle
     /// [`Handle::spawn`]: crate::runtime::Handle::spawn
     #[track_caller]
-    pub fn spawn_on<Fut>(self, future: Fut, handle: &Handle) -> io::Result<JoinHandle<Fut::Output>>
+    pub fn spawn_on<Fut>(self, future: Fut, handle: &Handle, priority: TaskPriority) -> io::Result<JoinHandle<Fut::Output>>
     where
         Fut: Future + Send + 'static,
         Fut::Output: Send + 'static,
     {
         let fut_size = mem::size_of::<Fut>();
         Ok(if fut_size > BOX_FUTURE_THRESHOLD {
-            handle.spawn_named(Box::pin(future), SpawnMeta::new(self.name, fut_size))
+            handle.spawn_named(Box::pin(future), SpawnMeta::new(self.name, fut_size), priority)
         } else {
-            handle.spawn_named(future, SpawnMeta::new(self.name, fut_size))
+            handle.spawn_named(future, SpawnMeta::new(self.name, fut_size), priority)
         })
     }
 
@@ -133,16 +133,16 @@ impl<'a> Builder<'a> {
     /// [`task::spawn_local`]: crate::task::spawn_local
     /// [`LocalSet`]: crate::task::LocalSet
     #[track_caller]
-    pub fn spawn_local<Fut>(self, future: Fut) -> io::Result<JoinHandle<Fut::Output>>
+    pub fn spawn_local<Fut>(self, future: Fut, priority: TaskPriority) -> io::Result<JoinHandle<Fut::Output>>
     where
         Fut: Future + 'static,
         Fut::Output: 'static,
     {
         let fut_size = mem::size_of::<Fut>();
         Ok(if fut_size > BOX_FUTURE_THRESHOLD {
-            super::local::spawn_local_inner(Box::pin(future), SpawnMeta::new(self.name, fut_size))
+            super::local::spawn_local_inner(Box::pin(future), SpawnMeta::new(self.name, fut_size), priority)
         } else {
-            super::local::spawn_local_inner(future, SpawnMeta::new(self.name, fut_size))
+            super::local::spawn_local_inner(future, SpawnMeta::new(self.name, fut_size), priority)
         })
     }
 
@@ -158,6 +158,7 @@ impl<'a> Builder<'a> {
         self,
         future: Fut,
         local_set: &LocalSet,
+        priority: TaskPriority
     ) -> io::Result<JoinHandle<Fut::Output>>
     where
         Fut: Future + 'static,
@@ -165,9 +166,9 @@ impl<'a> Builder<'a> {
     {
         let fut_size = mem::size_of::<Fut>();
         Ok(if fut_size > BOX_FUTURE_THRESHOLD {
-            local_set.spawn_named(Box::pin(future), SpawnMeta::new(self.name, fut_size))
+            local_set.spawn_named(Box::pin(future), SpawnMeta::new(self.name, fut_size), priority)
         } else {
-            local_set.spawn_named(future, SpawnMeta::new(self.name, fut_size))
+            local_set.spawn_named(future, SpawnMeta::new(self.name, fut_size), priority)
         })
     }
 
@@ -183,13 +184,14 @@ impl<'a> Builder<'a> {
     pub fn spawn_blocking<Function, Output>(
         self,
         function: Function,
+        priority: TaskPriority
     ) -> io::Result<JoinHandle<Output>>
     where
         Function: FnOnce() -> Output + Send + 'static,
         Output: Send + 'static,
     {
         let handle = Handle::current();
-        self.spawn_blocking_on(function, &handle)
+        self.spawn_blocking_on(function, &handle, priority)
     }
 
     /// Spawns blocking code on the provided [runtime handle]'s blocking threadpool.
@@ -203,6 +205,7 @@ impl<'a> Builder<'a> {
         self,
         function: Function,
         handle: &Handle,
+        priority: TaskPriority
     ) -> io::Result<JoinHandle<Output>>
     where
         Function: FnOnce() -> Output + Send + 'static,
@@ -216,6 +219,7 @@ impl<'a> Builder<'a> {
                 Mandatory::NonMandatory,
                 SpawnMeta::new(self.name, fn_size),
                 handle,
+                priority
             )
         } else {
             handle.inner.blocking_spawner().spawn_blocking_inner(
@@ -223,6 +227,7 @@ impl<'a> Builder<'a> {
                 Mandatory::NonMandatory,
                 SpawnMeta::new(self.name, fn_size),
                 handle,
+                priority
             )
         };
 

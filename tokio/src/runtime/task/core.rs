@@ -22,6 +22,8 @@ use std::pin::Pin;
 use std::ptr::NonNull;
 use std::task::{Context, Poll, Waker};
 
+use super::TaskPriority;
+
 /// The task cell. Contains the components of the task.
 ///
 /// It is critical for `Header` to be the first field as the task structure will
@@ -157,6 +159,8 @@ pub(crate) struct Header {
     /// Table of function pointers for executing actions on the task.
     pub(super) vtable: &'static Vtable,
 
+    pub(super) priority: TaskPriority,
+
     /// This integer contains the id of the `OwnedTasks` or `LocalOwnedTasks`
     /// that this task is stored in. If the task is not in any list, should be
     /// the id of the list that it was previously in, or `None` if it has never
@@ -208,11 +212,12 @@ pub(super) enum Stage<T: Future> {
 impl<T: Future, S: Schedule> Cell<T, S> {
     /// Allocates a new task cell, containing the header, trailer, and core
     /// structures.
-    pub(super) fn new(future: T, scheduler: S, state: State, task_id: Id) -> Box<Cell<T, S>> {
+    pub(super) fn new(future: T, scheduler: S, state: State, task_id: Id, priority: TaskPriority) -> Box<Cell<T, S>> {
         // Separated into a non-generic function to reduce LLVM codegen
         fn new_header(
             state: State,
             vtable: &'static Vtable,
+            priority: TaskPriority,
             #[cfg(all(tokio_unstable, feature = "tracing"))] tracing_id: Option<tracing::Id>,
         ) -> Header {
             Header {
@@ -220,6 +225,7 @@ impl<T: Future, S: Schedule> Cell<T, S> {
                 queue_next: UnsafeCell::new(None),
                 vtable,
                 owner_id: UnsafeCell::new(None),
+                priority,
                 #[cfg(all(tokio_unstable, feature = "tracing"))]
                 tracing_id,
             }
@@ -233,6 +239,7 @@ impl<T: Future, S: Schedule> Cell<T, S> {
             header: new_header(
                 state,
                 vtable,
+                priority,
                 #[cfg(all(tokio_unstable, feature = "tracing"))]
                 tracing_id,
             ),

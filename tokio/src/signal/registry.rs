@@ -216,7 +216,7 @@ mod tests {
                 registry.broadcast();
 
                 drop(registry);
-            });
+            }, crate::TaskPriority::Normal);
 
             let _ = fire.send(());
             let all = future::join3(collect(first), collect(second), collect(third));

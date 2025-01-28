@@ -299,6 +299,7 @@ use std::io;
 
 #[cfg(not(test))]
 use crate::blocking::spawn_blocking;
+use crate::TaskPriority;
 #[cfg(test)]
 use mocks::spawn_blocking;
 
@@ -307,7 +308,7 @@ where
     F: FnOnce() -> io::Result<T> + Send + 'static,
     T: Send + 'static,
 {
-    match spawn_blocking(f).await {
+    match spawn_blocking(f, TaskPriority::Low).await {
         Ok(res) => res,
         Err(_) => Err(io::Error::new(
             io::ErrorKind::Other,

@@ -6,6 +6,7 @@ use crate::fs::{asyncify, OpenOptions};
 use crate::io::blocking::{Buf, DEFAULT_MAX_BUF_SIZE};
 use crate::io::{AsyncRead, AsyncSeek, AsyncWrite, ReadBuf};
 use crate::sync::Mutex;
+use crate::TaskPriority;
 
 use std::cmp;
 use std::fmt;
@@ -409,7 +410,7 @@ impl File {
 
             // Return the result as a seek
             (Operation::Seek(res), buf)
-        }));
+        }, TaskPriority::Low));
 
         let (op, buf) = match inner.state {
             State::Idle(_) => unreachable!(),
@@ -610,7 +611,7 @@ impl AsyncRead for File {
                         // reports the length of the data written into the buffer.
                         let res = unsafe { buf.read_from(&mut &*std, max_buf_size) };
                         (Operation::Read(res), buf)
-                    }));
+                    }, TaskPriority::Low));
                 }
                 State::Busy(ref mut rx) => {
                     let (op, mut buf) = ready!(Pin::new(rx).poll(cx))?;
@@ -679,7 +680,7 @@ impl AsyncSeek for File {
                 inner.state = State::Busy(spawn_blocking(move || {
                     let res = (&*std).seek(pos);
                     (Operation::Seek(res), buf)
-                }));
+                }, TaskPriority::Low));
                 Ok(())
             }
         }
@@ -752,7 +753,7 @@ impl AsyncWrite for File {
                         };
 
                         (Operation::Write(res), buf)
-                    })
+                    }, TaskPriority::Low)
                     .ok_or_else(|| {
                         io::Error::new(io::ErrorKind::Other, "background task failed")
                     })?;
@@ -823,7 +824,7 @@ impl AsyncWrite for File {
                         };
 
                         (Operation::Write(res), buf)
-                    })
+                    }, TaskPriority::Low)
                     .ok_or_else(|| {
                         io::Error::new(io::ErrorKind::Other, "background task failed")
                     })?;

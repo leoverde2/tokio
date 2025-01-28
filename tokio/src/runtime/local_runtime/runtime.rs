@@ -6,6 +6,7 @@ use crate::runtime::{context, Builder, EnterGuard, Handle, BOX_FUTURE_THRESHOLD}
 use crate::task::JoinHandle;
 
 use crate::util::trace::SpawnMeta;
+use crate::TaskPriority;
 use std::future::Future;
 use std::marker::PhantomData;
 use std::mem;
@@ -144,7 +145,7 @@ impl LocalRuntime {
     /// # }
     /// ```
     #[track_caller]
-    pub fn spawn_local<F>(&self, future: F) -> JoinHandle<F::Output>
+    pub fn spawn_local<F>(&self, future: F, priority: TaskPriority) -> JoinHandle<F::Output>
     where
         F: Future + 'static,
         F::Output: 'static,
@@ -155,9 +156,9 @@ impl LocalRuntime {
         // safety: spawn_local can only be called from `LocalRuntime`, which this is
         unsafe {
             if std::mem::size_of::<F>() > BOX_FUTURE_THRESHOLD {
-                self.handle.spawn_local_named(Box::pin(future), meta)
+                self.handle.spawn_local_named(Box::pin(future), meta, priority)
             } else {
-                self.handle.spawn_local_named(future, meta)
+                self.handle.spawn_local_named(future, meta, priority)
             }
         }
     }
@@ -187,12 +188,12 @@ impl LocalRuntime {
     /// # }
     /// ```
     #[track_caller]
-    pub fn spawn_blocking<F, R>(&self, func: F) -> JoinHandle<R>
+    pub fn spawn_blocking<F, R>(&self, func: F, priority: TaskPriority) -> JoinHandle<R>
     where
         F: FnOnce() -> R + Send + 'static,
         R: Send + 'static,
     {
-        self.handle.spawn_blocking(func)
+        self.handle.spawn_blocking(func, priority)
     }
 
     /// Runs a future to completion on the Tokio runtime. This is the

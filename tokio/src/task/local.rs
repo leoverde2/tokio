@@ -4,6 +4,7 @@ use crate::loom::sync::{Arc, Mutex};
 #[cfg(tokio_unstable)]
 use crate::runtime;
 use crate::runtime::task::{self, JoinHandle, LocalOwnedTasks, Task, TaskHarnessScheduleHooks};
+use crate::TaskPriority;
 use crate::runtime::{context, ThreadId, BOX_FUTURE_THRESHOLD};
 use crate::sync::AtomicWaker;
 use crate::util::trace::SpawnMeta;
@@ -365,22 +366,22 @@ cfg_rt! {
     /// [`LocalRuntime`]: struct@crate::runtime::LocalRuntime
     /// [`tokio::spawn`]: fn@crate::task::spawn
     #[track_caller]
-    pub fn spawn_local<F>(future: F) -> JoinHandle<F::Output>
+    pub fn spawn_local<F>(future: F, priority: TaskPriority) -> JoinHandle<F::Output>
     where
         F: Future + 'static,
         F::Output: 'static,
     {
         let fut_size = std::mem::size_of::<F>();
         if fut_size > BOX_FUTURE_THRESHOLD {
-            spawn_local_inner(Box::pin(future), SpawnMeta::new_unnamed(fut_size))
+            spawn_local_inner(Box::pin(future), SpawnMeta::new_unnamed(fut_size), priority)
         } else {
-            spawn_local_inner(future, SpawnMeta::new_unnamed(fut_size))
+            spawn_local_inner(future, SpawnMeta::new_unnamed(fut_size), priority)
         }
     }
 
 
     #[track_caller]
-    pub(super) fn spawn_local_inner<F>(future: F, meta: SpawnMeta<'_>) -> JoinHandle<F::Output>
+    pub(super) fn spawn_local_inner<F>(future: F, meta: SpawnMeta<'_>, priority: TaskPriority) -> JoinHandle<F::Output>
     where F: Future + 'static,
           F::Output: 'static
     {
@@ -412,11 +413,11 @@ cfg_rt! {
                 let task = crate::util::trace::task(future, "task", meta, id.as_u64());
 
                 // safety: we have verified that this is a `LocalRuntime` owned by the current thread
-                unsafe { handle.spawn_local(task, id) }
+                unsafe { handle.spawn_local(task, id, priority) }
             } else {
                 match CURRENT.with(|LocalData { ctx, .. }| ctx.get()) {
                     None => panic!("`spawn_local` called from outside of a `task::LocalSet` or LocalRuntime"),
-                    Some(cx) => cx.spawn(future.take().unwrap(), meta)
+                    Some(cx) => cx.spawn(future.take().unwrap(), meta, priority)
                 }
             })
         });
@@ -426,7 +427,7 @@ cfg_rt! {
             Ok(Some(join_handle)) => join_handle,
             Err(_) => match CURRENT.with(|LocalData { ctx, .. }| ctx.get()) {
                 None => panic!("`spawn_local` called from outside of a `task::LocalSet` or LocalRuntime"),
-                Some(cx) => cx.spawn(future.unwrap(), meta)
+                Some(cx) => cx.spawn(future.unwrap(), meta, priority)
             }
         }
     }
@@ -561,16 +562,16 @@ impl LocalSet {
     /// ```
     /// [`spawn_local`]: fn@spawn_local
     #[track_caller]
-    pub fn spawn_local<F>(&self, future: F) -> JoinHandle<F::Output>
+    pub fn spawn_local<F>(&self, future: F, priority: TaskPriority) -> JoinHandle<F::Output>
     where
         F: Future + 'static,
         F::Output: 'static,
     {
         let fut_size = mem::size_of::<F>();
         if fut_size > BOX_FUTURE_THRESHOLD {
-            self.spawn_named(Box::pin(future), SpawnMeta::new_unnamed(fut_size))
+            self.spawn_named(Box::pin(future), SpawnMeta::new_unnamed(fut_size), priority)
         } else {
-            self.spawn_named(future, SpawnMeta::new_unnamed(fut_size))
+            self.spawn_named(future, SpawnMeta::new_unnamed(fut_size), priority)
         }
     }
 
@@ -694,21 +695,22 @@ impl LocalSet {
         &self,
         future: F,
         meta: SpawnMeta<'_>,
+        priority: TaskPriority,
     ) -> JoinHandle<F::Output>
     where
         F: Future + 'static,
         F::Output: 'static,
     {
-        self.spawn_named_inner(future, meta)
+        self.spawn_named_inner(future, meta, priority)
     }
 
     #[track_caller]
-    fn spawn_named_inner<F>(&self, future: F, meta: SpawnMeta<'_>) -> JoinHandle<F::Output>
+    fn spawn_named_inner<F>(&self, future: F, meta: SpawnMeta<'_>, priority: TaskPriority) -> JoinHandle<F::Output>
     where
         F: Future + 'static,
         F::Output: 'static,
     {
-        let handle = self.context.spawn(future, meta);
+        let handle = self.context.spawn(future, meta, priority);
 
         // Because a task was spawned from *outside* the `LocalSet`, wake the
         // `LocalSet` future to execute the new task, if it hasn't been woken.
@@ -995,7 +997,7 @@ impl Drop for LocalSet {
 
 impl Context {
     #[track_caller]
-    fn spawn<F>(&self, future: F, meta: SpawnMeta<'_>) -> JoinHandle<F::Output>
+    fn spawn<F>(&self, future: F, meta: SpawnMeta<'_>, priority: TaskPriority) -> JoinHandle<F::Output>
     where
         F: Future + 'static,
         F::Output: 'static,
@@ -1009,7 +1011,7 @@ impl Context {
             self.shared
                 .local_state
                 .owned
-                .bind(future, self.shared.clone(), id)
+                .bind(future, self.shared.clone(), id, priority)
         };
 
         if let Some(notified) = notified {
@@ -1246,7 +1248,7 @@ mod tests {
         let f = async {
             LocalSet::new()
                 .run_until(async {
-                    spawn_local(async {}).await.unwrap();
+                    spawn_local(async {}, TaskPriority::Normal).await.unwrap();
                 })
                 .await;
         };
@@ -1278,7 +1280,7 @@ mod tests {
                 async move {
                     notify.notified().await;
                 }
-            });
+            }, TaskPriority::Normal);
             let mut run_until = Box::pin(local.run_until(async move {
                 task.await.unwrap();
             }));

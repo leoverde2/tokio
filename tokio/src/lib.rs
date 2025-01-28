@@ -6,7 +6,6 @@
 )]
 #![warn(
     missing_debug_implementations,
-    missing_docs,
     rust_2018_idioms,
     unreachable_pub
 )]
@@ -547,6 +546,7 @@ cfg_not_sync! {
 }
 
 pub mod task;
+pub use task::task_priority::TaskPriority;
 cfg_rt! {
     pub use task::spawn;
 }

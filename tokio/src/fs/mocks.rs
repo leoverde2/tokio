@@ -1,7 +1,7 @@
 //! Mock version of std::fs::File;
 use mockall::mock;
 
-use crate::sync::oneshot;
+use crate::{sync::oneshot, TaskPriority};
 use std::{
     cell::RefCell,
     collections::VecDeque,
@@ -91,7 +91,7 @@ pub(super) struct JoinHandle<T> {
     rx: oneshot::Receiver<T>,
 }
 
-pub(super) fn spawn_blocking<F, R>(f: F) -> JoinHandle<R>
+pub(super) fn spawn_blocking<F, R>(f: F, priority: TaskPriority) -> JoinHandle<R>
 where
     F: FnOnce() -> R + Send + 'static,
     R: Send + 'static,
@@ -106,7 +106,7 @@ where
     JoinHandle { rx }
 }
 
-pub(super) fn spawn_mandatory_blocking<F, R>(f: F) -> Option<JoinHandle<R>>
+pub(super) fn spawn_mandatory_blocking<F, R>(f: F, priority: TaskPriority) -> Option<JoinHandle<R>>
 where
     F: FnOnce() -> R + Send + 'static,
     R: Send + 'static,

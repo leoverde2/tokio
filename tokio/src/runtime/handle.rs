@@ -1,3 +1,4 @@
+
 #[cfg(tokio_unstable)]
 use crate::runtime;
 use crate::runtime::{context, scheduler, RuntimeFlavor, RuntimeMetrics};
@@ -19,6 +20,7 @@ use crate::runtime::task::JoinHandle;
 use crate::runtime::BOX_FUTURE_THRESHOLD;
 use crate::util::error::{CONTEXT_MISSING_ERROR, THREAD_LOCAL_DESTROYED_ERROR};
 use crate::util::trace::SpawnMeta;
+use crate::TaskPriority;
 
 use std::future::Future;
 use std::marker::PhantomData;
@@ -185,16 +187,16 @@ impl Handle {
     /// # }
     /// ```
     #[track_caller]
-    pub fn spawn<F>(&self, future: F) -> JoinHandle<F::Output>
+    pub fn spawn<F>(&self, future: F, priority: TaskPriority) -> JoinHandle<F::Output>
     where
         F: Future + Send + 'static,
         F::Output: Send + 'static,
     {
         let fut_size = mem::size_of::<F>();
         if fut_size > BOX_FUTURE_THRESHOLD {
-            self.spawn_named(Box::pin(future), SpawnMeta::new_unnamed(fut_size))
+            self.spawn_named(Box::pin(future), SpawnMeta::new_unnamed(fut_size), priority)
         } else {
-            self.spawn_named(future, SpawnMeta::new_unnamed(fut_size))
+            self.spawn_named(future, SpawnMeta::new_unnamed(fut_size), priority)
         }
     }
 
@@ -218,12 +220,12 @@ impl Handle {
     /// });
     /// # }
     #[track_caller]
-    pub fn spawn_blocking<F, R>(&self, func: F) -> JoinHandle<R>
+    pub fn spawn_blocking<F, R>(&self, func: F, priority: TaskPriority) -> JoinHandle<R>
     where
         F: FnOnce() -> R + Send + 'static,
         R: Send + 'static,
     {
-        self.inner.blocking_spawner().spawn_blocking(self, func)
+        self.inner.blocking_spawner().spawn_blocking(self, func, priority)
     }
 
     /// Runs a future to completion on this `Handle`'s associated `Runtime`.
@@ -329,7 +331,7 @@ impl Handle {
     }
 
     #[track_caller]
-    pub(crate) fn spawn_named<F>(&self, future: F, _meta: SpawnMeta<'_>) -> JoinHandle<F::Output>
+    pub(crate) fn spawn_named<F>(&self, future: F, _meta: SpawnMeta<'_>, priority: TaskPriority) -> JoinHandle<F::Output>
     where
         F: Future + Send + 'static,
         F::Output: Send + 'static,
@@ -345,7 +347,7 @@ impl Handle {
         let future = super::task::trace::Trace::root(future);
         #[cfg(all(tokio_unstable, feature = "tracing"))]
         let future = crate::util::trace::task(future, "task", _meta, id.as_u64());
-        self.inner.spawn(future, id)
+        self.inner.spawn(future, id, priority)
     }
 
     #[track_caller]
@@ -354,6 +356,7 @@ impl Handle {
         &self,
         future: F,
         _meta: SpawnMeta<'_>,
+        priority: TaskPriority,
     ) -> JoinHandle<F::Output>
     where
         F: Future + 'static,
@@ -370,7 +373,7 @@ impl Handle {
         let future = super::task::trace::Trace::root(future);
         #[cfg(all(tokio_unstable, feature = "tracing"))]
         let future = crate::util::trace::task(future, "task", _meta, id.as_u64());
-        self.inner.spawn_local(future, id)
+        self.inner.spawn_local(future, id, priority)
     }
 
     /// Returns the flavor of the current `Runtime`.

@@ -7,6 +7,7 @@ use crate::runtime::{
     TaskHooks, TaskMeta,
 };
 use crate::util::RngSeedGenerator;
+use crate::TaskPriority;
 
 use std::fmt;
 
@@ -36,24 +37,24 @@ pub(crate) struct Handle {
 
 impl Handle {
     /// Spawns a future onto the thread pool
-    pub(crate) fn spawn<F>(me: &Arc<Self>, future: F, id: task::Id) -> JoinHandle<F::Output>
+    pub(crate) fn spawn<F>(me: &Arc<Self>, future: F, id: task::Id, priority: TaskPriority) -> JoinHandle<F::Output>
     where
         F: crate::future::Future + Send + 'static,
         F::Output: Send + 'static,
     {
-        Self::bind_new_task(me, future, id)
+        Self::bind_new_task(me, future, id, priority)
     }
 
     pub(crate) fn shutdown(&self) {
         self.close();
     }
 
-    pub(super) fn bind_new_task<T>(me: &Arc<Self>, future: T, id: task::Id) -> JoinHandle<T::Output>
+    pub(super) fn bind_new_task<T>(me: &Arc<Self>, future: T, id: task::Id, priority: TaskPriority) -> JoinHandle<T::Output>
     where
         T: Future + Send + 'static,
         T::Output: Send + 'static,
     {
-        let (handle, notified) = me.shared.owned.bind(future, me.clone(), id);
+        let (handle, notified) = me.shared.owned.bind(future, me.clone(), id, priority);
 
         me.task_hooks.spawn(&TaskMeta {
             id,

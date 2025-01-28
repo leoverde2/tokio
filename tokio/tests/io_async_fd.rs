@@ -469,7 +469,7 @@ async fn multiple_waiters() {
             std::mem::drop(afd_a);
         };
 
-        tasks.push(tokio::spawn(f));
+        tasks.push(tokio::spawn(f, tokio::TaskPriority::Normal));
     }
 
     let mut all_tasks = futures::future::try_join_all(tasks);
@@ -516,7 +516,7 @@ async fn poll_fns() {
         barrier_clone.wait().await;
 
         let _ = std::future::poll_fn(|cx| afd_a_2.as_ref().poll_read_ready(cx)).await;
-    });
+    }, tokio::TaskPriority::Normal);
 
     let afd_a_2 = afd_a.clone();
     let w_barrier = Arc::new(tokio::sync::Barrier::new(2));
@@ -530,7 +530,7 @@ async fn poll_fns() {
         barrier_clone.wait().await;
 
         let _ = std::future::poll_fn(|cx| afd_a_2.as_ref().poll_write_ready(cx)).await;
-    });
+    }, tokio::TaskPriority::Normal);
 
     r_barrier.wait().await;
     w_barrier.wait().await;
@@ -939,7 +939,7 @@ async fn await_error_readiness_invalid_address() {
         if unsafe { libc::sendmsg(socket_fd, &msg, 0) } == -1 {
             panic!("{:?}", std::io::Error::last_os_error())
         }
-    });
+    }, tokio::TaskPriority::Normal);
 
     let fd = AsyncFd::new(socket).unwrap();
 

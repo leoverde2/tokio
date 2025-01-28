@@ -9,6 +9,7 @@ use std::pin::Pin;
 use std::task::{Context, Poll};
 use std::{fmt, panic};
 
+use crate::TaskPriority;
 use crate::runtime::Handle;
 use crate::task::Id;
 use crate::task::{unconstrained, AbortHandle, JoinError, JoinHandle, LocalSet};
@@ -129,13 +130,13 @@ impl<T: 'static> JoinSet<T> {
     ///
     /// [`AbortHandle`]: crate::task::AbortHandle
     #[track_caller]
-    pub fn spawn<F>(&mut self, task: F) -> AbortHandle
+    pub fn spawn<F>(&mut self, task: F, priority: TaskPriority) -> AbortHandle
     where
         F: Future<Output = T>,
         F: Send + 'static,
         T: Send,
     {
-        self.insert(crate::spawn(task))
+        self.insert(crate::spawn(task, priority))
     }
 
     /// Spawn the provided task on the provided runtime and store it in this
@@ -148,13 +149,13 @@ impl<T: 'static> JoinSet<T> {
     ///
     /// [`AbortHandle`]: crate::task::AbortHandle
     #[track_caller]
-    pub fn spawn_on<F>(&mut self, task: F, handle: &Handle) -> AbortHandle
+    pub fn spawn_on<F>(&mut self, task: F, handle: &Handle, priority: TaskPriority) -> AbortHandle
     where
         F: Future<Output = T>,
         F: Send + 'static,
         T: Send,
     {
-        self.insert(handle.spawn(task))
+        self.insert(handle.spawn(task, priority))
     }
 
     /// Spawn the provided task on the current [`LocalSet`] and store it in this
@@ -172,12 +173,12 @@ impl<T: 'static> JoinSet<T> {
     /// [`LocalSet`]: crate::task::LocalSet
     /// [`AbortHandle`]: crate::task::AbortHandle
     #[track_caller]
-    pub fn spawn_local<F>(&mut self, task: F) -> AbortHandle
+    pub fn spawn_local<F>(&mut self, task: F, priority: TaskPriority) -> AbortHandle
     where
         F: Future<Output = T>,
         F: 'static,
     {
-        self.insert(crate::task::spawn_local(task))
+        self.insert(crate::task::spawn_local(task, priority))
     }
 
     /// Spawn the provided task on the provided [`LocalSet`] and store it in
@@ -192,12 +193,12 @@ impl<T: 'static> JoinSet<T> {
     /// [`AbortHandle`]: crate::task::AbortHandle
     /// [`spawn_local`]: Self::spawn_local
     #[track_caller]
-    pub fn spawn_local_on<F>(&mut self, task: F, local_set: &LocalSet) -> AbortHandle
+    pub fn spawn_local_on<F>(&mut self, task: F, local_set: &LocalSet, priority: TaskPriority) -> AbortHandle
     where
         F: Future<Output = T>,
         F: 'static,
     {
-        self.insert(local_set.spawn_local(task))
+        self.insert(local_set.spawn_local(task, priority))
     }
 
     /// Spawn the blocking code on the blocking threadpool and store
@@ -237,13 +238,13 @@ impl<T: 'static> JoinSet<T> {
     ///
     /// [`AbortHandle`]: crate::task::AbortHandle
     #[track_caller]
-    pub fn spawn_blocking<F>(&mut self, f: F) -> AbortHandle
+    pub fn spawn_blocking<F>(&mut self, f: F, priority: TaskPriority) -> AbortHandle
     where
         F: FnOnce() -> T,
         F: Send + 'static,
         T: Send,
     {
-        self.insert(crate::runtime::spawn_blocking(f))
+        self.insert(crate::runtime::spawn_blocking(f, priority))
     }
 
     /// Spawn the blocking code on the blocking threadpool of the
@@ -252,13 +253,13 @@ impl<T: 'static> JoinSet<T> {
     ///
     /// [`AbortHandle`]: crate::task::AbortHandle
     #[track_caller]
-    pub fn spawn_blocking_on<F>(&mut self, f: F, handle: &Handle) -> AbortHandle
+    pub fn spawn_blocking_on<F>(&mut self, f: F, handle: &Handle, priority: TaskPriority) -> AbortHandle
     where
         F: FnOnce() -> T,
         F: Send + 'static,
         T: Send,
     {
-        self.insert(handle.spawn_blocking(f))
+        self.insert(handle.spawn_blocking(f, priority))
     }
 
     fn insert(&mut self, jh: JoinHandle<T>) -> AbortHandle {
@@ -629,7 +630,7 @@ where
     fn from_iter<I: IntoIterator<Item = F>>(iter: I) -> Self {
         let mut set = Self::new();
         iter.into_iter().for_each(|task| {
-            set.spawn(task);
+            set.spawn(task, TaskPriority::Normal);
         });
         set
     }
@@ -660,13 +661,13 @@ impl<'a, T: 'static> Builder<'a, T> {
     ///
     /// [`AbortHandle`]: crate::task::AbortHandle
     #[track_caller]
-    pub fn spawn<F>(self, future: F) -> std::io::Result<AbortHandle>
+    pub fn spawn<F>(self, future: F, priority: TaskPriority) -> std::io::Result<AbortHandle>
     where
         F: Future<Output = T>,
         F: Send + 'static,
         T: Send,
     {
-        Ok(self.joinset.insert(self.builder.spawn(future)?))
+        Ok(self.joinset.insert(self.builder.spawn(future, priority)?))
     }
 
     /// Spawn the provided task on the provided [runtime handle] with this
@@ -680,13 +681,13 @@ impl<'a, T: 'static> Builder<'a, T> {
     /// [`AbortHandle`]: crate::task::AbortHandle
     /// [runtime handle]: crate::runtime::Handle
     #[track_caller]
-    pub fn spawn_on<F>(self, future: F, handle: &Handle) -> std::io::Result<AbortHandle>
+    pub fn spawn_on<F>(self, future: F, handle: &Handle, priority: TaskPriority) -> std::io::Result<AbortHandle>
     where
         F: Future<Output = T>,
         F: Send + 'static,
         T: Send,
     {
-        Ok(self.joinset.insert(self.builder.spawn_on(future, handle)?))
+        Ok(self.joinset.insert(self.builder.spawn_on(future, handle, priority)?))
     }
 
     /// Spawn the blocking code on the blocking threadpool with this builder's
@@ -703,13 +704,13 @@ impl<'a, T: 'static> Builder<'a, T> {
     /// [`JoinSet`]: crate::task::JoinSet
     /// [`AbortHandle`]: crate::task::AbortHandle
     #[track_caller]
-    pub fn spawn_blocking<F>(self, f: F) -> std::io::Result<AbortHandle>
+    pub fn spawn_blocking<F>(self, f: F, priority: TaskPriority) -> std::io::Result<AbortHandle>
     where
         F: FnOnce() -> T,
         F: Send + 'static,
         T: Send,
     {
-        Ok(self.joinset.insert(self.builder.spawn_blocking(f)?))
+        Ok(self.joinset.insert(self.builder.spawn_blocking(f, priority)?))
     }
 
     /// Spawn the blocking code on the blocking threadpool of the provided
@@ -723,7 +724,7 @@ impl<'a, T: 'static> Builder<'a, T> {
     /// [`JoinSet`]: crate::task::JoinSet
     /// [`AbortHandle`]: crate::task::AbortHandle
     #[track_caller]
-    pub fn spawn_blocking_on<F>(self, f: F, handle: &Handle) -> std::io::Result<AbortHandle>
+    pub fn spawn_blocking_on<F>(self, f: F, handle: &Handle, priority: TaskPriority) -> std::io::Result<AbortHandle>
     where
         F: FnOnce() -> T,
         F: Send + 'static,
@@ -731,7 +732,7 @@ impl<'a, T: 'static> Builder<'a, T> {
     {
         Ok(self
             .joinset
-            .insert(self.builder.spawn_blocking_on(f, handle)?))
+            .insert(self.builder.spawn_blocking_on(f, handle, priority)?))
     }
 
     /// Spawn the provided task on the current [`LocalSet`] with this builder's
@@ -748,12 +749,12 @@ impl<'a, T: 'static> Builder<'a, T> {
     /// [`LocalSet`]: crate::task::LocalSet
     /// [`AbortHandle`]: crate::task::AbortHandle
     #[track_caller]
-    pub fn spawn_local<F>(self, future: F) -> std::io::Result<AbortHandle>
+    pub fn spawn_local<F>(self, future: F, priority: TaskPriority) -> std::io::Result<AbortHandle>
     where
         F: Future<Output = T>,
         F: 'static,
     {
-        Ok(self.joinset.insert(self.builder.spawn_local(future)?))
+        Ok(self.joinset.insert(self.builder.spawn_local(future, priority)?))
     }
 
     /// Spawn the provided task on the provided [`LocalSet`] with this builder's
@@ -766,14 +767,14 @@ impl<'a, T: 'static> Builder<'a, T> {
     /// [`LocalSet`]: crate::task::LocalSet
     /// [`AbortHandle`]: crate::task::AbortHandle
     #[track_caller]
-    pub fn spawn_local_on<F>(self, future: F, local_set: &LocalSet) -> std::io::Result<AbortHandle>
+    pub fn spawn_local_on<F>(self, future: F, local_set: &LocalSet, priority: TaskPriority) -> std::io::Result<AbortHandle>
     where
         F: Future<Output = T>,
         F: 'static,
     {
         Ok(self
             .joinset
-            .insert(self.builder.spawn_local_on(future, local_set)?))
+            .insert(self.builder.spawn_local_on(future, local_set, priority)?))
     }
 }
 

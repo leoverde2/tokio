@@ -378,7 +378,9 @@ impl TaskTracker {
         F: Future + Send + 'static,
         F::Output: Send + 'static,
     {
-        tokio::task::spawn(self.track_future(task))
+        use tokio::TaskPriority;
+
+        tokio::task::spawn(self.track_future(task), TaskPriority::Normal)
     }
 
     /// Spawn the provided future on the provided Tokio runtime, and track it in this `TaskTracker`.
@@ -393,7 +395,7 @@ impl TaskTracker {
         F: Future + Send + 'static,
         F::Output: Send + 'static,
     {
-        handle.spawn(self.track_future(task))
+        handle.spawn(self.track_future(task), tokio::TaskPriority::Normal)
     }
 
     /// Spawn the provided future on the current [`LocalSet`], and track it in this `TaskTracker`.
@@ -410,7 +412,7 @@ impl TaskTracker {
         F: Future + 'static,
         F::Output: 'static,
     {
-        tokio::task::spawn_local(self.track_future(task))
+        tokio::task::spawn_local(self.track_future(task), tokio::TaskPriority::Normal)
     }
 
     /// Spawn the provided future on the provided [`LocalSet`], and track it in this `TaskTracker`.
@@ -427,7 +429,7 @@ impl TaskTracker {
         F: Future + 'static,
         F::Output: 'static,
     {
-        local_set.spawn_local(self.track_future(task))
+        local_set.spawn_local(self.track_future(task), tokio::TaskPriority::Normal)
     }
 
     /// Spawn the provided blocking task on the current Tokio runtime, and track it in this `TaskTracker`.
@@ -444,12 +446,14 @@ impl TaskTracker {
         F: Send + 'static,
         T: Send + 'static,
     {
+        use tokio::TaskPriority;
+
         let token = self.token();
         tokio::task::spawn_blocking(move || {
             let res = task();
             drop(token);
             res
-        })
+        }, TaskPriority::Normal)
     }
 
     /// Spawn the provided blocking task on the provided Tokio runtime, and track it in this `TaskTracker`.
@@ -471,7 +475,7 @@ impl TaskTracker {
             let res = task();
             drop(token);
             res
-        })
+        }, tokio::TaskPriority::Normal)
     }
 
     /// Track the provided future.

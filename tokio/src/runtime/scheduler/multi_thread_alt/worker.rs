@@ -344,7 +344,7 @@ pub(super) fn create(
 
         handle
             .blocking_spawner
-            .spawn_blocking(&rt_handle, move || run(index, h2, handoff_core, false));
+            .spawn_blocking(&rt_handle, move || run(index, h2, handoff_core, false), crate::TaskPriority::Normal);
     }
 
     rt_handle
@@ -441,7 +441,7 @@ where
         let index = cx.index;
         let handle = cx.handle.clone();
         let handoff_core = cx.handoff_core.clone();
-        runtime::spawn_blocking(move || run(index, handle, handoff_core, true));
+        runtime::spawn_blocking(move || run(index, handle, handoff_core, true), crate::TaskPriority::Normal);
         Ok(())
     });
 

@@ -27,7 +27,7 @@ cfg_rt_multi_thread! {
     }
 }
 
-use crate::runtime::driver;
+use crate::{runtime::driver};
 
 #[derive(Debug, Clone)]
 pub(crate) enum Handle {
@@ -85,6 +85,7 @@ cfg_rt! {
     use crate::task::JoinHandle;
     use crate::util::RngSeedGenerator;
     use std::task::Waker;
+    use crate::TaskPriority;
 
     macro_rules! match_flavor {
         ($self:expr, $ty:ident($h:ident) => $e:expr) => {
@@ -138,19 +139,19 @@ cfg_rt! {
             }
         }
 
-        pub(crate) fn spawn<F>(&self, future: F, id: Id) -> JoinHandle<F::Output>
+        pub(crate) fn spawn<F>(&self, future: F, id: Id, priority: TaskPriority) -> JoinHandle<F::Output>
         where
             F: Future + Send + 'static,
             F::Output: Send + 'static,
         {
             match self {
-                Handle::CurrentThread(h) => current_thread::Handle::spawn(h, future, id),
+                Handle::CurrentThread(h) => current_thread::Handle::spawn(h, future, id, priority),
 
                 #[cfg(feature = "rt-multi-thread")]
-                Handle::MultiThread(h) => multi_thread::Handle::spawn(h, future, id),
+                Handle::MultiThread(h) => multi_thread::Handle::spawn(h, future, id, priority),
 
                 #[cfg(all(tokio_unstable, feature = "rt-multi-thread"))]
-                Handle::MultiThreadAlt(h) => multi_thread_alt::Handle::spawn(h, future, id),
+                Handle::MultiThreadAlt(h) => multi_thread_alt::Handle::spawn(h, future, id, priority),
             }
         }
 
@@ -160,13 +161,13 @@ cfg_rt! {
         /// This should only be called in `LocalRuntime` if the runtime has been verified to be owned
         /// by the current thread.
         #[allow(irrefutable_let_patterns)]
-        pub(crate) unsafe fn spawn_local<F>(&self, future: F, id: Id) -> JoinHandle<F::Output>
+        pub(crate) unsafe fn spawn_local<F>(&self, future: F, id: Id, priority: TaskPriority) -> JoinHandle<F::Output>
         where
             F: Future + 'static,
             F::Output: 'static,
         {
             if let Handle::CurrentThread(h) = self {
-                current_thread::Handle::spawn_local(h, future, id)
+                current_thread::Handle::spawn_local(h, future, id, priority)
             } else {
                 panic!("Only current_thread and LocalSet have spawn_local internals implemented")
             }

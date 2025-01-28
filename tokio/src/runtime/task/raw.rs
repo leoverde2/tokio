@@ -5,6 +5,8 @@ use crate::runtime::task::{Cell, Harness, Header, Id, Schedule, State};
 use std::ptr::NonNull;
 use std::task::{Poll, Waker};
 
+use crate::TaskPriority;
+
 /// Raw task handle
 #[derive(Clone)]
 pub(crate) struct RawTask {
@@ -157,15 +159,19 @@ const fn get_id_offset(
 }
 
 impl RawTask {
-    pub(super) fn new<T, S>(task: T, scheduler: S, id: Id) -> RawTask
+    pub(super) fn new<T, S>(task: T, scheduler: S, id: Id, priority: TaskPriority) -> RawTask
     where
         T: Future,
         S: Schedule,
     {
-        let ptr = Box::into_raw(Cell::<_, S>::new(task, scheduler, State::new(), id));
+        let ptr = Box::into_raw(Cell::<_, S>::new(task, scheduler, State::new(), id, priority));
         let ptr = unsafe { NonNull::new_unchecked(ptr.cast()) };
 
         RawTask { ptr }
+    }
+
+    pub(super) fn priority(&self) -> TaskPriority{
+        self.header().priority
     }
 
     pub(super) unsafe fn from_raw(ptr: NonNull<Header>) -> RawTask {

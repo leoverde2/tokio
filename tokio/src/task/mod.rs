@@ -321,13 +321,15 @@
 //! [`task::unconstrained`]: crate::task::unconstrained()
 //! [`poll`]: method@std::future::Future::poll
 
+pub mod task_priority;
+
 cfg_rt! {
     pub use crate::runtime::task::{JoinError, JoinHandle};
 
     mod blocking;
     pub use blocking::spawn_blocking;
 
-    mod spawn;
+    pub mod spawn;
     pub use spawn::spawn;
 
     cfg_rt_multi_thread! {
@@ -358,6 +360,7 @@ cfg_rt! {
     mod join_set;
     #[cfg(tokio_unstable)]
     pub mod join_set;
+
 
     pub use crate::runtime::task::{Id, id, try_id};
 

@@ -1,4 +1,5 @@
 use futures_util::future::{AbortHandle, Abortable};
+use tokio::TaskPriority;
 use std::fmt;
 use std::fmt::{Debug, Formatter};
 use std::future::Future;
@@ -117,7 +118,7 @@ impl LocalPoolHandle {
     ///     assert_eq!(output, "test");
     /// }
     /// ```
-    pub fn spawn_pinned<F, Fut>(&self, create_task: F) -> JoinHandle<Fut::Output>
+    pub fn spawn_pinned<F, Fut>(&self, create_task: F, priority: TaskPriority) -> JoinHandle<Fut::Output>
     where
         F: FnOnce() -> Fut,
         F: Send + 'static,
@@ -125,7 +126,7 @@ impl LocalPoolHandle {
         Fut::Output: Send + 'static,
     {
         self.pool
-            .spawn_pinned(create_task, WorkerChoice::LeastBurdened)
+            .spawn_pinned(create_task, WorkerChoice::LeastBurdened, priority)
     }
 
     /// Differs from `spawn_pinned` only in that you can choose a specific worker thread
@@ -170,7 +171,7 @@ impl LocalPoolHandle {
     /// ```
     ///
     #[track_caller]
-    pub fn spawn_pinned_by_idx<F, Fut>(&self, create_task: F, idx: usize) -> JoinHandle<Fut::Output>
+    pub fn spawn_pinned_by_idx<F, Fut>(&self, create_task: F, idx: usize, priority: TaskPriority) -> JoinHandle<Fut::Output>
     where
         F: FnOnce() -> Fut,
         F: Send + 'static,
@@ -178,7 +179,7 @@ impl LocalPoolHandle {
         Fut::Output: Send + 'static,
     {
         self.pool
-            .spawn_pinned(create_task, WorkerChoice::ByIdx(idx))
+            .spawn_pinned(create_task, WorkerChoice::ByIdx(idx), priority)
     }
 }
 
@@ -204,6 +205,7 @@ impl LocalPool {
         &self,
         create_task: F,
         worker_choice: WorkerChoice,
+        priority: TaskPriority,
     ) -> JoinHandle<Fut::Output>
     where
         F: FnOnce() -> Fut,
@@ -236,6 +238,7 @@ impl LocalPool {
                 let join_handle =
                     spawn_local(
                         async move { Abortable::new(create_task(), abort_registration).await },
+                        priority,
                     );
 
                 // Send the join handle back to the spawner. If sending fails,
@@ -293,7 +296,7 @@ impl LocalPool {
                     }
                 }
             }
-        })
+        }, priority)
     }
 
     /// Find the worker with the least number of tasks, increment its task

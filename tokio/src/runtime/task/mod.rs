@@ -225,6 +225,7 @@ use crate::util::linked_list;
 use crate::util::sharded_list;
 
 use crate::runtime::TaskCallback;
+use crate::TaskPriority;
 use std::marker::PhantomData;
 use std::ptr::NonNull;
 use std::{fmt, mem};
@@ -247,6 +248,7 @@ pub(crate) struct Notified<S: 'static>(Task<S>);
 // that the value is on a thread where it is safe to poll the task.
 unsafe impl<S: Schedule> Send for Notified<S> {}
 unsafe impl<S: Schedule> Sync for Notified<S> {}
+
 
 /// A non-Send variant of Notified with the invariant that it is on a thread
 /// where it is safe to poll it.
@@ -310,13 +312,14 @@ cfg_rt! {
         task: T,
         scheduler: S,
         id: Id,
+        priority: TaskPriority,
     ) -> (Task<S>, Notified<S>, JoinHandle<T::Output>)
     where
         S: Schedule,
         T: Future + 'static,
         T::Output: 'static,
     {
-        let raw = RawTask::new::<T, S>(task, scheduler, id);
+        let raw = RawTask::new::<T, S>(task, scheduler, id, priority);
         let task = Task {
             raw,
             _p: PhantomData,
@@ -334,13 +337,13 @@ cfg_rt! {
     /// only when the task is not going to be stored in an `OwnedTasks` list.
     ///
     /// Currently only blocking tasks use this method.
-    pub(crate) fn unowned<T, S>(task: T, scheduler: S, id: Id) -> (UnownedTask<S>, JoinHandle<T::Output>)
+    pub(crate) fn unowned<T, S>(task: T, scheduler: S, id: Id, priority: TaskPriority) -> (UnownedTask<S>, JoinHandle<T::Output>)
     where
         S: Schedule,
         T: Send + Future + 'static,
         T::Output: Send + 'static,
     {
-        let (task, notified, join) = new_task(task, scheduler, id);
+        let (task, notified, join) = new_task(task, scheduler, id, priority);
 
         // This transfers the ref-count of task and notified into an UnownedTask.
         // This is valid because an UnownedTask holds two ref-counts.

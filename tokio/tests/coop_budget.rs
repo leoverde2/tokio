@@ -4,6 +4,7 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use tokio::net::UdpSocket;
+use tokio::TaskPriority;
 
 /// Ensure that UDP sockets have functional budgeting
 ///
@@ -55,7 +56,7 @@ async fn coop_budget_udp_send_recv() {
 
             tokio::task::yield_now().await;
         }
-    });
+    }, TaskPriority::Normal);
 
     for _ in 0..N_ITERATIONS {
         tx.send(PACKET).await.unwrap();

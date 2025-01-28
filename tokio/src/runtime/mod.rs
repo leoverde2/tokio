@@ -347,6 +347,7 @@ cfg_signal_internal_and_unix! {
 
 cfg_rt! {
     pub(crate) mod task;
+    use crate::TaskPriority;
 
     mod config;
     use config::Config;

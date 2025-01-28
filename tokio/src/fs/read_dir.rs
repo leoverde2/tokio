@@ -1,4 +1,5 @@
 use crate::fs::asyncify;
+use crate::TaskPriority;
 
 use std::collections::VecDeque;
 use std::ffi::OsString;
@@ -115,7 +116,7 @@ impl ReadDir {
                     self.0 = State::Pending(spawn_blocking(move || {
                         let remain = ReadDir::next_chunk(&mut buf, &mut std);
                         (buf, std, remain)
-                    }));
+                    }, TaskPriority::Low));
                 }
                 State::Pending(ref mut rx) => {
                     self.0 = State::Idle(Some(ready!(Pin::new(rx).poll(cx))?));

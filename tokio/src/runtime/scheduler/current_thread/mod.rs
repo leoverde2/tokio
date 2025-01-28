@@ -11,6 +11,7 @@ use crate::runtime::{
 use crate::sync::notify::Notify;
 use crate::util::atomic_cell::AtomicCell;
 use crate::util::{waker_ref, RngSeedGenerator, Wake, WakerRef};
+use crate::TaskPriority;
 
 use std::cell::RefCell;
 use std::collections::VecDeque;
@@ -445,12 +446,13 @@ impl Handle {
         me: &Arc<Self>,
         future: F,
         id: crate::runtime::task::Id,
+        priority: TaskPriority,
     ) -> JoinHandle<F::Output>
     where
         F: crate::future::Future + Send + 'static,
         F::Output: Send + 'static,
     {
-        let (handle, notified) = me.shared.owned.bind(future, me.clone(), id);
+        let (handle, notified) = me.shared.owned.bind(future, me.clone(), id, priority);
 
         me.task_hooks.spawn(&TaskMeta {
             id,
@@ -474,12 +476,13 @@ impl Handle {
         me: &Arc<Self>,
         future: F,
         id: crate::runtime::task::Id,
+        priority: TaskPriority,
     ) -> JoinHandle<F::Output>
     where
         F: crate::future::Future + 'static,
         F::Output: 'static,
     {
-        let (handle, notified) = me.shared.owned.bind_local(future, me.clone(), id);
+        let (handle, notified) = me.shared.owned.bind_local(future, me.clone(), id, priority);
 
         me.task_hooks.spawn(&TaskMeta {
             id,

@@ -57,7 +57,7 @@
 //! leak.
 
 use crate::loom::sync::{Arc, Mutex};
-use crate::runtime;
+use crate::{runtime, TaskPriority};
 use crate::runtime::scheduler::multi_thread::{
     idle, queue, Counters, Handle, Idle, Overflow, Parker, Stats, TraceStatus, Unparker,
 };
@@ -436,7 +436,7 @@ where
         // Once the blocking task is done executing, we will attempt to
         // steal the core back.
         let worker = cx.worker.clone();
-        runtime::spawn_blocking(move || run(worker));
+        runtime::spawn_blocking(move || run(worker), TaskPriority::Normal);
         Ok(())
     });
 
@@ -461,7 +461,7 @@ where
 impl Launch {
     pub(crate) fn launch(mut self) {
         for worker in self.0.drain(..) {
-            runtime::spawn_blocking(move || run(worker));
+            runtime::spawn_blocking(move || run(worker), TaskPriority::Normal);
         }
     }
 }

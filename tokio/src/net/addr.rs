@@ -2,6 +2,7 @@ use std::future;
 use std::io;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
 
+
 /// Converts or resolves without blocking to one or more `SocketAddr` values.
 ///
 /// # DNS
@@ -157,6 +158,7 @@ impl sealed::ToSocketAddrsPriv for &[SocketAddr] {
 }
 
 cfg_net! {
+    use crate::TaskPriority;
     // ===== impl str =====
 
     impl ToSocketAddrs for str {}
@@ -181,7 +183,7 @@ cfg_net! {
 
             MaybeReady(sealed::State::Blocking(spawn_blocking(move || {
                 std::net::ToSocketAddrs::to_socket_addrs(&s)
-            })))
+            }, TaskPriority::Normal)))
         }
     }
 
@@ -218,7 +220,7 @@ cfg_net! {
 
             MaybeReady(sealed::State::Blocking(spawn_blocking(move || {
                 std::net::ToSocketAddrs::to_socket_addrs(&(&host[..], port))
-            })))
+            }, TaskPriority::Normal)))
         }
     }
 

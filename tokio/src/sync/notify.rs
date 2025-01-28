@@ -387,6 +387,8 @@ pub struct Notified<'a> {
     /// The current state of the receiving process.
     state: State,
 
+    //priority: AtomicUsize,
+
     /// Number of calls to `notify_waiters` at the time of creation.
     notify_waiters_calls: usize,
 

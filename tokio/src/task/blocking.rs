@@ -1,4 +1,5 @@
-use crate::task::JoinHandle;
+use crate::{task::JoinHandle, TaskPriority};
+
 
 cfg_rt_multi_thread! {
     /// Runs the provided blocking function on the current thread without
@@ -199,11 +200,11 @@ cfg_rt! {
     /// # }
     /// ```
     #[track_caller]
-    pub fn spawn_blocking<F, R>(f: F) -> JoinHandle<R>
+    pub fn spawn_blocking<F, R>(f: F, priority: TaskPriority) -> JoinHandle<R>
     where
         F: FnOnce() -> R + Send + 'static,
         R: Send + 'static,
     {
-        crate::runtime::spawn_blocking(f)
+        crate::runtime::spawn_blocking(f, priority)
     }
 }
