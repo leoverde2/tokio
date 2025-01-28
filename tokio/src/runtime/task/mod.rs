@@ -249,6 +249,11 @@ pub(crate) struct Notified<S: 'static>(Task<S>);
 unsafe impl<S: Schedule> Send for Notified<S> {}
 unsafe impl<S: Schedule> Sync for Notified<S> {}
 
+impl<S> Notified<S> {
+    pub(crate) fn priority(&self) -> TaskPriority{
+        self.0.raw.priority()
+    }
+}
 
 /// A non-Send variant of Notified with the invariant that it is on a thread
 /// where it is safe to poll it.

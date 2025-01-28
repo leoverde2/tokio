@@ -25,6 +25,7 @@ cfg_not_has_atomic_u64! {
     type AtomicUnsignedLong = crate::loom::sync::atomic::AtomicU32;
 }
 
+
 /// Producer handle. May only be used from a single thread.
 pub(crate) struct Local<T: 'static> {
     inner: Arc<Inner<T>>,
