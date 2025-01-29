@@ -4,6 +4,7 @@ use crate::loom::cell::UnsafeCell;
 use crate::loom::sync::Arc;
 use crate::runtime::scheduler::multi_thread::{Overflow, Stats};
 use crate::runtime::task;
+use crate::TaskPriority;
 
 use std::mem::{self, MaybeUninit};
 use std::ptr;
@@ -25,6 +26,29 @@ cfg_not_has_atomic_u64! {
     type AtomicUnsignedLong = crate::loom::sync::atomic::AtomicU32;
 }
 
+pub(crate) struct PriorityLocal<T: 'static>{
+    queues: [Local<T>; 4],
+}
+
+pub(crate) struct PrioritySteal<T: 'static>{
+    queues: [Steal<T>; 4],
+}
+
+pub(crate) fn priority_local<T: 'static>() -> (PrioritySteal<T>, PriorityLocal<T>){
+    let (steal0, local0) = local();
+    let (steal1, local1) = local();
+    let (steal2, local2) = local();
+    let (steal3, local3) = local();
+
+    (
+        PrioritySteal{
+            queues: [steal0, steal1, steal2, steal3],
+        },
+        PriorityLocal{
+            queues: [local0, local1, local2, local3],
+        }
+    )
+}
 
 /// Producer handle. May only be used from a single thread.
 pub(crate) struct Local<T: 'static> {
@@ -103,6 +127,105 @@ pub(crate) fn local<T: 'static>() -> (Steal<T>, Local<T>) {
     let remote = Steal(inner);
 
     (remote, local)
+}
+
+impl<T> PriorityLocal<T>{
+    #[inline]
+    pub(crate) fn len(&self) -> usize{
+        self.queues.iter().map(|q| q.len()).sum()
+    }
+
+    #[inline]
+    pub(crate) fn has_tasks(&self) -> bool{
+        self.queues.iter().any(|q| q.has_tasks())
+    }
+
+    #[inline]
+    pub(crate) fn push_back(&mut self, tasks: impl ExactSizeIterator<Item = task::Notified<T>>) {
+        // it is used, should implement
+    }
+
+    pub(crate) fn max_capacity(&self) -> usize{
+        LOCAL_QUEUE_CAPACITY * self.queues.len()
+    }
+
+    pub(crate) fn remaining_slots(&self) -> usize {
+        self.queues.iter().map(|q| q.remaining_slots()).sum()
+    } 
+
+    #[inline]
+    pub(crate) fn push_back_or_overflow<O: Overflow<T>>(
+        &mut self,
+        task: task::Notified<T>,
+        overflow: &O,
+        stats: &mut Stats
+    ){
+        let priority_idx = task.priority() as usize;
+        self.queues[priority_idx].push_back_or_overflow(task, overflow, stats);
+    }
+
+    #[inline]
+    pub(crate) fn pop(&mut self) -> Option<task::Notified<T>>{
+        if self.queues[TaskPriority::Critical as usize].has_tasks(){
+            return self.queues[TaskPriority::Critical as usize].pop();
+        }
+        if self.queues[TaskPriority::High as usize].has_tasks(){
+            return self.queues[TaskPriority::High as usize].pop();
+        }
+        if self.queues[TaskPriority::Normal as usize].has_tasks(){
+            return self.queues[TaskPriority::Normal as usize].pop();
+        }
+        if self.queues[TaskPriority::Low as usize].has_tasks(){
+            return self.queues[TaskPriority::Low as usize].pop();
+        }
+        None
+    }
+}
+
+impl<T> Clone for PrioritySteal<T>{
+    #[inline]
+    fn clone(&self) -> Self {
+        PrioritySteal{
+            queues: self.queues.clone(),
+        }
+    }
+}
+
+impl<T> PrioritySteal<T>{
+    pub(crate) fn is_empty(&self) -> bool{
+        self.queues.iter().all(|q| q.is_empty())
+    }
+
+cfg_unstable_metrics!{
+    pub(crate) fn len(&self) -> usize{
+        self.queues.iter().map(|q| q.len()).sum()
+    }
+}
+
+    #[inline]
+    pub(crate) fn steal_into(
+        &self,
+        dst: &mut PriorityLocal<T>,
+        dst_stats: &mut Stats,
+    ) -> Option<task::Notified<T>>{
+        if let Some(task) = self.queues[TaskPriority::Critical as usize]
+            .steal_into(&mut dst.queues[TaskPriority::Critical as usize], dst_stats)
+        {
+            return Some(task);
+        }
+        if let Some(task) = self.queues[TaskPriority::High as usize]
+            .steal_into(&mut dst.queues[TaskPriority::High as usize], dst_stats)
+        {
+            return Some(task);
+        }
+        if let Some(task) = self.queues[TaskPriority::Normal as usize]
+            .steal_into(&mut dst.queues[TaskPriority::Normal as usize], dst_stats)
+        {
+            return Some(task);
+        }
+        self.queues[TaskPriority::Low as usize]
+            .steal_into(&mut dst.queues[TaskPriority::Low as usize], dst_stats)
+    }
 }
 
 impl<T> Local<T> {

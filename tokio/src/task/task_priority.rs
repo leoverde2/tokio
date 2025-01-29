@@ -12,3 +12,7 @@ impl Default for TaskPriority{
         TaskPriority::Normal
     }
 }
+
+impl TaskPriority{
+    pub const VALUES: [Self; 4] = [Self::Critical, Self::High, Self::Normal, Self::Low];
+}

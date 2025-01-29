@@ -114,7 +114,7 @@ struct Core {
     lifo_enabled: bool,
 
     /// The worker-local run queue.
-    run_queue: queue::Local<Arc<Handle>>,
+    run_queue: queue::PriorityLocal<Arc<Handle>>,
 
     /// True if the worker is currently searching for more work. Searching
     /// involves attempting to steal from other workers.
@@ -199,7 +199,7 @@ pub(crate) struct Synced {
 /// Used to communicate with a worker from other threads.
 struct Remote {
     /// Steals tasks from this worker.
-    pub(super) steal: queue::Steal<Arc<Handle>>,
+    pub(super) steal: queue::PrioritySteal<Arc<Handle>>,
 
     /// Unparks the associated worker thread
     unpark: Unparker,
@@ -252,7 +252,7 @@ pub(super) fn create(
 
     // Create the local queues
     for _ in 0..size {
-        let (steal, run_queue) = queue::local();
+        let (steal, run_queue) = queue::priority_local();
 
         let park = park.clone();
         let unpark = park.unpark();
@@ -804,6 +804,8 @@ impl Core {
             // `run_queue`. So, we can be confident that by the time we call
             // `run_queue.push_back` below, there will be *at least* `cap`
             // available slots in the queue.
+
+
             let cap = usize::min(
                 self.run_queue.remaining_slots(),
                 self.run_queue.max_capacity() / 2,
