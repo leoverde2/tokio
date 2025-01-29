@@ -3,17 +3,20 @@
     allow(dead_code)
 )]
 
-use crate::runtime::task;
+use crate::{runtime::task, TaskPriority};
 
 pub(crate) struct Synced {
     /// True if the queue is closed.
     pub(super) is_closed: bool,
 
     /// Linked-list head.
-    pub(super) head: Option<task::RawTask>,
+    pub(super) heads: [Option<task::RawTask>; TaskPriority::VALUES.len()],
+
+    //pub(super) head: Option<task::RawTask>,
+    //pub(super) tail: Option<task::RawTask>,
 
     /// Linked-list tail.
-    pub(super) tail: Option<task::RawTask>,
+    pub(super) tails: [Option<task::RawTask>; TaskPriority::VALUES.len()],
 }
 
 unsafe impl Send for Synced {}
@@ -21,12 +24,13 @@ unsafe impl Sync for Synced {}
 
 impl Synced {
     pub(super) fn pop<T: 'static>(&mut self) -> Option<task::Notified<T>> {
-        let task = self.head?;
+        let idx = self.get_highest_priority_indx();
+        let task = self.heads[idx]?;
 
-        self.head = unsafe { task.get_queue_next() };
+        self.heads[idx] = unsafe { task.get_queue_next() };
 
-        if self.head.is_none() {
-            self.tail = None;
+        if self.heads[idx].is_none() {
+            self.tails[idx] = None;
         }
 
         unsafe { task.set_queue_next(None) };
@@ -36,6 +40,15 @@ impl Synced {
     }
 
     pub(crate) fn is_empty(&self) -> bool {
-        self.head.is_none()
+        self.heads.iter().all(|head| head.is_none())
+    }
+
+    pub(crate) fn get_highest_priority_indx(&self) -> usize{
+        for (idx, head) in self.heads.iter().enumerate(){
+            if head.is_some(){
+                return idx
+            }
+        }
+        0
     }
 }

@@ -1,10 +1,10 @@
 
 #[derive(Copy, Clone, Debug)]
 pub enum TaskPriority {
-    Low = 0,
-    Normal = 1,
-    High = 2,
-    Critical = 3,
+    Critical = 0,
+    High = 1,
+    Normal = 2,
+    Low = 3,
 }
 
 impl Default for TaskPriority{
@@ -16,3 +16,4 @@ impl Default for TaskPriority{
 impl TaskPriority{
     pub const VALUES: [Self; 4] = [Self::Critical, Self::High, Self::Normal, Self::Low];
 }
+

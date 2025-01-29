@@ -1224,9 +1224,9 @@ impl Overflow<Arc<Handle>> for Handle {
     where
         I: Iterator<Item = task::Notified<Arc<Handle>>>,
     {
-        unsafe {
-            self.shared.inject.push_batch(self, iter);
-        }
+        //unsafe {
+        //    self.shared.inject.push_batch(self, iter);
+        //}
     }
 }
 

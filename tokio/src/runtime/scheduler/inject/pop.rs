@@ -1,6 +1,6 @@
 use super::Synced;
 
-use crate::runtime::task;
+use crate::{runtime::task, TaskPriority};
 
 use std::marker::PhantomData;
 
@@ -53,3 +53,4 @@ impl<'a, T: 'static> Drop for Pop<'a, T> {
         for _ in self.by_ref() {}
     }
 }
+

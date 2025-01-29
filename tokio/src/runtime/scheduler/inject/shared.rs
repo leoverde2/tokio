@@ -2,6 +2,7 @@ use super::{Pop, Synced};
 
 use crate::loom::sync::atomic::AtomicUsize;
 use crate::runtime::task;
+use crate::TaskPriority;
 
 use std::marker::PhantomData;
 use std::sync::atomic::Ordering::{Acquire, Release};
@@ -26,8 +27,8 @@ impl<T: 'static> Shared<T> {
 
         let synced = Synced {
             is_closed: false,
-            head: None,
-            tail: None,
+            heads: [None; TaskPriority::VALUES.len()],
+            tails: [None; TaskPriority::VALUES.len()],
         };
 
         (inject, synced)
@@ -70,6 +71,8 @@ impl<T: 'static> Shared<T> {
             return;
         }
 
+        let priority = task.priority() as usize;
+
         // safety: only mutated with the lock held
         let len = self.len.unsync_load();
         let task = task.into_raw();
@@ -77,15 +80,15 @@ impl<T: 'static> Shared<T> {
         // The next pointer should already be null
         debug_assert!(unsafe { task.get_queue_next().is_none() });
 
-        if let Some(tail) = synced.tail {
+        if let Some(tail) = synced.tails[priority] {
             // safety: Holding the Notified for a task guarantees exclusive
             // access to the `queue_next` field.
             unsafe { tail.set_queue_next(Some(task)) };
         } else {
-            synced.head = Some(task);
+            synced.heads[priority] = Some(task);
         }
 
-        synced.tail = Some(task);
+        synced.tails[priority] = Some(task);
         self.len.store(len + 1, Release);
     }
 
@@ -118,4 +121,5 @@ impl<T: 'static> Shared<T> {
 
         Pop::new(n, synced)
     }
+
 }

@@ -35,10 +35,10 @@ pub(crate) struct PrioritySteal<T: 'static>{
 }
 
 pub(crate) fn priority_local<T: 'static>() -> (PrioritySteal<T>, PriorityLocal<T>){
-    let (steal0, local0) = local();
-    let (steal1, local1) = local();
-    let (steal2, local2) = local();
-    let (steal3, local3) = local();
+    let (steal0, local0) = local(TaskPriority::Critical);
+    let (steal1, local1) = local(TaskPriority::High);
+    let (steal2, local2) = local(TaskPriority::Normal);
+    let (steal3, local3) = local(TaskPriority::Low);
 
     (
         PrioritySteal{
@@ -53,6 +53,7 @@ pub(crate) fn priority_local<T: 'static>() -> (PrioritySteal<T>, PriorityLocal<T
 /// Producer handle. May only be used from a single thread.
 pub(crate) struct Local<T: 'static> {
     inner: Arc<Inner<T>>,
+    priority: TaskPriority,
 }
 
 /// Consumer handle. May be used from many threads.
@@ -107,7 +108,7 @@ fn make_fixed_size<T>(buffer: Box<[T]>) -> Box<[T; LOCAL_QUEUE_CAPACITY]> {
 }
 
 /// Create a new local run-queue
-pub(crate) fn local<T: 'static>() -> (Steal<T>, Local<T>) {
+pub(crate) fn local<T: 'static>(priority: TaskPriority) -> (Steal<T>, Local<T>) {
     let mut buffer = Vec::with_capacity(LOCAL_QUEUE_CAPACITY);
 
     for _ in 0..LOCAL_QUEUE_CAPACITY {
@@ -122,6 +123,7 @@ pub(crate) fn local<T: 'static>() -> (Steal<T>, Local<T>) {
 
     let local = Local {
         inner: inner.clone(),
+        priority,
     };
 
     let remote = Steal(inner);
@@ -141,12 +143,14 @@ impl<T> PriorityLocal<T>{
     }
 
     #[inline]
-    pub(crate) fn push_back(&mut self, tasks: impl ExactSizeIterator<Item = task::Notified<T>>) {
-        // it is used, should implement
+    pub(crate) fn push_back(&mut self, mut tasks: impl ExactSizeIterator<Item = task::Notified<T>>) {
+        for queue in self.queues.iter_mut(){
+            queue.push_back(&mut tasks);
+        }
     }
 
     pub(crate) fn max_capacity(&self) -> usize{
-        LOCAL_QUEUE_CAPACITY * self.queues.len()
+        LOCAL_QUEUE_CAPACITY
     }
 
     pub(crate) fn remaining_slots(&self) -> usize {
@@ -257,7 +261,11 @@ impl<T> Local<T> {
     /// # Panics
     ///
     /// The method panics if there is not enough capacity to fit in the queue.
-    pub(crate) fn push_back(&mut self, tasks: impl ExactSizeIterator<Item = task::Notified<T>>) {
+    pub(crate) fn push_back<I>(&mut self, tasks: &mut I)
+    where
+        I: Iterator<Item = task::Notified<T>> + ExactSizeIterator,
+    {
+
         let len = tasks.len();
         assert!(len <= LOCAL_QUEUE_CAPACITY);
 
@@ -282,6 +290,9 @@ impl<T> Local<T> {
 
         for task in tasks {
             let idx = tail as usize & MASK;
+            if task.priority() as usize != self.priority as usize{
+                break;
+            }
 
             self.inner.buffer[idx].with_mut(|ptr| {
                 // Write the task to the slot
