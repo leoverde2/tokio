@@ -18,6 +18,13 @@ impl<'a, T: 'static> Pop<'a, T> {
             _p: PhantomData,
         }
     }
+
+}
+
+impl<'a, T: 'static> PopPeek for Pop<'a, T>{
+    fn get_next_priority(&self) -> Option<usize> {
+        self.synced.get_highest_priority_indx()
+    }
 }
 
 impl<'a, T: 'static> Iterator for Pop<'a, T> {
@@ -54,3 +61,6 @@ impl<'a, T: 'static> Drop for Pop<'a, T> {
     }
 }
 
+pub(crate) trait PopPeek{ 
+    fn get_next_priority(&self) -> Option<usize>;
+}

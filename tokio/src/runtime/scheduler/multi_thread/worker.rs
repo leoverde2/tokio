@@ -781,22 +781,40 @@ impl Core {
 
     /// Return the next notified task available to this worker.
     fn next_task(&mut self, worker: &Worker) -> Option<Notified> {
+        //println!("GETTING NEXT TASK");
         if self.tick % self.global_queue_interval == 0 {
             // Update the global queue interval, if needed
             self.tune_global_queue_interval(worker);
 
-            worker
+            let result = worker
                 .handle
                 .next_remote_task()
-                .or_else(|| self.next_local_task())
+                .or_else(|| self.next_local_task());
+            if result.is_some(){
+                //println!("LOCAL TASK OF PRIORITY: {:?}", result.as_ref().unwrap().priority());
+            } else {
+                //println!("NO LOCAL TASK")
+            }
+            result
         } else {
-            let maybe_task = self.next_local_task();
+            let global_priority = worker.handle.shared.synced.lock().inject.get_highest_priority_indx();
 
-            if maybe_task.is_some() {
-                return maybe_task;
+            if let Some(global_priority) = global_priority{
+                let maybe_task = self.next_local_task_priority(global_priority.into());
+                if maybe_task.is_some(){
+                    //println!("GETTING LOCAL TASK WITH HIGHER PRIORITY THAN GLOBAL. PRIORITY: {:?}", maybe_task.as_ref().unwrap().priority());
+                    return maybe_task;
+                }
+            } else {
+                let maybe_task = self.next_local_task();
+                if maybe_task.is_some(){
+                    //println!("GETTING LOCAL TASK, NO GLOBAL TASK. PRIORITY: {:?}", maybe_task.as_ref().unwrap().priority());
+                    return maybe_task;
+                }
             }
 
             if worker.inject().is_empty() {
+                //println!("NO FOUND TASK");
                 return None;
             }
 
@@ -833,12 +851,21 @@ impl Core {
             // Push the rest of the on the run queue
             self.run_queue.push_back(tasks);
 
+            if ret.is_some(){
+                //println!("RUNNING GLOBAL TASK OF PRIORITY: {:?}", ret.as_ref().unwrap().priority());
+            } else {
+                //println!("NO TASK FOUND");
+            }
             ret
         }
     }
 
     fn next_local_task(&mut self) -> Option<Notified> {
         self.lifo_slot.take().or_else(|| self.run_queue.pop())
+    }
+
+    fn next_local_task_priority(&mut self, global_priority: TaskPriority) -> Option<Notified>{
+        self.lifo_slot.take().or_else(|| self.run_queue.pop_maybe(global_priority))
     }
 
     /// Function responsible for stealing tasks from another worker
@@ -866,7 +893,7 @@ impl Core {
             let target = &worker.handle.shared.remotes[i];
             if let Some(task) = target
                 .steal
-                .steal_into(&mut self.run_queue, &mut self.stats)
+                    .steal_into(&mut self.run_queue, &mut self.stats)
             {
                 return Some(task);
             }
@@ -954,9 +981,9 @@ impl Core {
 
         if worker
             .handle
-            .shared
-            .idle
-            .is_parked(&worker.handle.shared, worker.index)
+                .shared
+                .idle
+                .is_parked(&worker.handle.shared, worker.index)
         {
             return false;
         }
@@ -1135,8 +1162,8 @@ impl Handle {
     pub(super) fn close(&self) {
         if self
             .shared
-            .inject
-            .close(&mut self.shared.synced.lock().inject)
+                .inject
+                .close(&mut self.shared.synced.lock().inject)
         {
             self.notify_all();
         }
@@ -1220,7 +1247,7 @@ impl Overflow<Arc<Handle>> for Handle {
         self.push_remote_task(task);
     }
 
-    fn push_batch<I>(&self, iter: I)
+    fn push_batch<I>(&self, _iter: I)
     where
         I: Iterator<Item = task::Notified<Arc<Handle>>>,
     {

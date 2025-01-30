@@ -5,6 +5,7 @@ use crate::runtime::task;
 
 mod pop;
 pub(crate) use pop::Pop;
+pub(crate) use pop::PopPeek;
 
 mod shared;
 pub(crate) use shared::Shared;

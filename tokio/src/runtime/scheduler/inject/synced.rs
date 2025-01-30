@@ -3,6 +3,8 @@
     allow(dead_code)
 )]
 
+
+
 use crate::{runtime::task, TaskPriority};
 
 pub(crate) struct Synced {
@@ -17,6 +19,8 @@ pub(crate) struct Synced {
 
     /// Linked-list tail.
     pub(super) tails: [Option<task::RawTask>; TaskPriority::VALUES.len()],
+
+
 }
 
 unsafe impl Send for Synced {}
@@ -24,7 +28,7 @@ unsafe impl Sync for Synced {}
 
 impl Synced {
     pub(super) fn pop<T: 'static>(&mut self) -> Option<task::Notified<T>> {
-        let idx = self.get_highest_priority_indx();
+        let idx = self.get_highest_priority_indx().unwrap();
         let task = self.heads[idx]?;
 
         self.heads[idx] = unsafe { task.get_queue_next() };
@@ -33,7 +37,7 @@ impl Synced {
             self.tails[idx] = None;
         }
 
-        unsafe { task.set_queue_next(None) };
+        //unsafe { task.set_queue_next(None) };
 
         // safety: a `Notified` is pushed into the queue and now it is popped!
         Some(unsafe { task::Notified::from_raw(task) })
@@ -43,12 +47,16 @@ impl Synced {
         self.heads.iter().all(|head| head.is_none())
     }
 
-    pub(crate) fn get_highest_priority_indx(&self) -> usize{
+    pub(crate) fn is_specific_empty(&self, priority: TaskPriority) -> bool{
+        self.heads[priority as usize].is_none()
+    }
+
+    pub(crate) fn get_highest_priority_indx(&self) -> Option<usize>{
         for (idx, head) in self.heads.iter().enumerate(){
             if head.is_some(){
-                return idx
+                return Some(idx);
             }
         }
-        0
+        None
     }
 }

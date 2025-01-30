@@ -2,6 +2,7 @@
 
 use crate::loom::cell::UnsafeCell;
 use crate::loom::sync::Arc;
+use crate::runtime::scheduler::inject::PopPeek;
 use crate::runtime::scheduler::multi_thread::{Overflow, Stats};
 use crate::runtime::task;
 use crate::TaskPriority;
@@ -143,18 +144,21 @@ impl<T> PriorityLocal<T>{
     }
 
     #[inline]
-    pub(crate) fn push_back(&mut self, mut tasks: impl ExactSizeIterator<Item = task::Notified<T>>) {
+    pub(crate) fn push_back<I>(&mut self, mut tasks: I)
+    where
+        I: Iterator<Item = task::Notified<T>> + ExactSizeIterator + PopPeek,
+    {
         for queue in self.queues.iter_mut(){
             queue.push_back(&mut tasks);
         }
     }
 
     pub(crate) fn max_capacity(&self) -> usize{
-        LOCAL_QUEUE_CAPACITY
+        self.queues[1].max_capacity()
     }
 
     pub(crate) fn remaining_slots(&self) -> usize {
-        self.queues.iter().map(|q| q.remaining_slots()).sum()
+        self.queues.iter().map(|queue| queue.remaining_slots()).min().unwrap()
     } 
 
     #[inline]
@@ -170,17 +174,46 @@ impl<T> PriorityLocal<T>{
 
     #[inline]
     pub(crate) fn pop(&mut self) -> Option<task::Notified<T>>{
+        //println!("HIGH HAS TASKS: {}", self.queues[1].has_tasks());
+        //println!("HIGH QUEUE TASKS: {}", self.queues[1].len());
         if self.queues[TaskPriority::Critical as usize].has_tasks(){
+            //println!("{:?}", TaskPriority::Critical);
             return self.queues[TaskPriority::Critical as usize].pop();
+        } else {
         }
         if self.queues[TaskPriority::High as usize].has_tasks(){
+            //println!("{:?}", TaskPriority::High);
             return self.queues[TaskPriority::High as usize].pop();
         }
         if self.queues[TaskPriority::Normal as usize].has_tasks(){
+            //println!("{:?}", TaskPriority::Normal);
             return self.queues[TaskPriority::Normal as usize].pop();
         }
         if self.queues[TaskPriority::Low as usize].has_tasks(){
+            //println!("{:?}", TaskPriority::Low);
             return self.queues[TaskPriority::Low as usize].pop();
+        }
+        None
+    }
+
+    #[inline]
+    pub(crate) fn pop_maybe(&mut self, global_priority: TaskPriority) -> Option<task::Notified<T>>{
+        //println!("HIGH HAS TASKS: {}", self.queues[1].has_tasks());
+        //println!("HIGH QUEUE TASKS: {}", self.queues[1].len());
+        if self.queues[TaskPriority::Critical as usize].has_tasks(){
+            return self.queues[TaskPriority::Critical as usize].pop();
+        }
+        let prio = TaskPriority::High as usize;
+        if self.queues[prio].has_tasks() && global_priority as usize >= prio{
+            return self.queues[prio].pop();
+        }
+        let prio = TaskPriority::Normal as usize;
+        if self.queues[prio].has_tasks() && global_priority as usize >= prio{
+            return self.queues[prio].pop();
+        }
+        let prio = TaskPriority::Low as usize;
+        if self.queues[prio].has_tasks() && global_priority as usize >= prio{
+            return self.queues[prio].pop();
         }
         None
     }
@@ -200,11 +233,11 @@ impl<T> PrioritySteal<T>{
         self.queues.iter().all(|q| q.is_empty())
     }
 
-cfg_unstable_metrics!{
-    pub(crate) fn len(&self) -> usize{
-        self.queues.iter().map(|q| q.len()).sum()
+    cfg_unstable_metrics!{
+        pub(crate) fn len(&self) -> usize{
+            self.queues.iter().map(|q| q.len()).sum()
+        }
     }
-}
 
     #[inline]
     pub(crate) fn steal_into(
@@ -263,7 +296,7 @@ impl<T> Local<T> {
     /// The method panics if there is not enough capacity to fit in the queue.
     pub(crate) fn push_back<I>(&mut self, tasks: &mut I)
     where
-        I: Iterator<Item = task::Notified<T>> + ExactSizeIterator,
+        I: Iterator<Item = task::Notified<T>> + ExactSizeIterator + PopPeek,
     {
 
         let len = tasks.len();
@@ -271,6 +304,10 @@ impl<T> Local<T> {
 
         if len == 0 {
             // Nothing to do
+            return;
+        }
+
+        if tasks.get_next_priority().unwrap() != self.priority as usize{
             return;
         }
 
@@ -288,11 +325,11 @@ impl<T> Local<T> {
             panic!()
         }
 
+
         for task in tasks {
             let idx = tail as usize & MASK;
-            if task.priority() as usize != self.priority as usize{
-                break;
-            }
+
+            let ret = task.is_next_none();
 
             self.inner.buffer[idx].with_mut(|ptr| {
                 // Write the task to the slot
@@ -306,6 +343,10 @@ impl<T> Local<T> {
             });
 
             tail = tail.wrapping_add(1);
+
+            if ret{
+                break;
+            }
         }
 
         self.inner.tail.store(tail, Release);
@@ -416,17 +457,17 @@ impl<T> Local<T> {
         // moved).
         if self
             .inner
-            .head
-            .compare_exchange(
-                prev,
-                pack(
-                    head.wrapping_add(NUM_TASKS_TAKEN),
-                    head.wrapping_add(NUM_TASKS_TAKEN),
-                ),
-                Release,
-                Relaxed,
-            )
-            .is_err()
+                .head
+                .compare_exchange(
+                    prev,
+                    pack(
+                        head.wrapping_add(NUM_TASKS_TAKEN),
+                        head.wrapping_add(NUM_TASKS_TAKEN),
+                    ),
+                    Release,
+                    Relaxed,
+                )
+                .is_err()
         {
             // We failed to claim the tasks, losing the race. Return out of
             // this function and try the full `push` routine again. The queue
@@ -516,6 +557,7 @@ impl<T> Local<T> {
 
         Some(self.inner.buffer[idx].with(|ptr| unsafe { ptr::read(ptr).assume_init() }))
     }
+
 }
 
 impl<T> Steal<T> {
@@ -649,7 +691,7 @@ impl<T> Steal<T> {
             // this queue.
             dst.inner.buffer[dst_idx]
                 .with_mut(|ptr| unsafe { ptr::write((*ptr).as_mut_ptr(), task) });
-        }
+            }
 
         let mut prev_packed = next_packed;
 

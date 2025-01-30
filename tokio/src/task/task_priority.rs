@@ -17,3 +17,14 @@ impl TaskPriority{
     pub const VALUES: [Self; 4] = [Self::Critical, Self::High, Self::Normal, Self::Low];
 }
 
+impl From<usize> for TaskPriority{
+    fn from(value: usize) -> Self {
+        match value {
+            0 => TaskPriority::Critical,
+            1 => TaskPriority::High,
+            2 => TaskPriority::Normal,
+            3 => TaskPriority::Low,
+            _ => TaskPriority::Low,
+        }
+    }
+}

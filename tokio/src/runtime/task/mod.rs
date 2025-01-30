@@ -253,6 +253,15 @@ impl<S> Notified<S> {
     pub(crate) fn priority(&self) -> TaskPriority{
         self.0.raw.priority()
     }
+
+    pub(crate) fn is_next_none(&self) -> bool{
+        unsafe {
+            if self.0.raw.get_queue_next().is_none(){
+                return true;
+            }
+        }
+        false
+    }
 }
 
 /// A non-Send variant of Notified with the invariant that it is on a thread
@@ -376,15 +385,15 @@ impl<S: 'static> Task<S> {
     }
 
     #[cfg(all(
-        tokio_unstable,
-        tokio_taskdump,
-        feature = "rt",
-        target_os = "linux",
-        any(target_arch = "aarch64", target_arch = "x86", target_arch = "x86_64")
+            tokio_unstable,
+            tokio_taskdump,
+            feature = "rt",
+            target_os = "linux",
+            any(target_arch = "aarch64", target_arch = "x86", target_arch = "x86_64")
     ))]
-    pub(super) fn as_raw(&self) -> RawTask {
-        self.raw
-    }
+        pub(super) fn as_raw(&self) -> RawTask {
+            self.raw
+        }
 
     fn header(&self) -> &Header {
         self.raw.header()
